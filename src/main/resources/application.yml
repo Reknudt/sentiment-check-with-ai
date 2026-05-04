@@ -1,0 +1,3 @@
+spring:
+  application:
+    name: sentiment-check-with-ai

@@ -1,0 +1,13 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Maven / Gradle
+target/
+build/
+.gradle/
+.settings/
+.project
+.classpath
