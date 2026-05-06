@@ -1,4 +1,4 @@
-package com.pavlov.sentiment_check_with_ai;
+package com.pavlov.sentiment;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

@@ -1,3 +1,27 @@
 spring:
   application:
     name: sentiment-check-with-ai
+
+  data:
+    redis:
+      host: localhost  # Хост Redis
+      port: 6379       # Порт Redis
+      timeout: 2000ms  # Таймаут подключения
+      lettuce:
+        pool:
+          max-active: 10   # Максимум соединений в пуле
+          max-idle: 5      # Максимум idle соединений
+          min-idle: 2      # Минимум idle соединений
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.sentiment: DEBUG  # Логи нашего приложения
+    org.springframework.data.redis: INFO  # Логи Redis
+
+#redis:
+#  keys:
+#    sentimentLog:
+#      timeToLive: PT5M
