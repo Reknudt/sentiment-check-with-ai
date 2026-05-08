@@ -1,76 +1,114 @@
 package com.pavlov.sentiment.repository;
 
+import com.pavlov.sentiment.model.SentimentResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Repository;
+import tools.jackson.databind.ObjectMapper;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Repository
+//@RequiredArgsConstructor
 public class SentimentCacheRepository {
-    
-    private static final String CACHE_KEY_PREFIX = "sentiment:";  // Префикс для всех ключей
-    private static final long CACHE_TTL_HOURS = 24;  // Храним в кэше 24 часа
-    
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-    
+
+    @Value("${spring.data.redis.dataPrefix}")
+    private final String DATA_PREFIX;
+
+    @Value("${spring.data.redis.textPrefix}")
+    private final String TEXT_PREFIX;
+
+    @Value("${spring.data.redis.cache.timeToLive}")
+    private final long CACHE_TTL_HOURS;
+
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    public SentimentCacheRepository(@Value("${spring.data.redis.dataPrefix}") String DATA_PREFIX,
+                                    @Value("${spring.data.redis.textPrefix}") String TEXT_PREFIX,
+                                    @Value("${spring.data.redis.cache.timeToLive}") long CACHE_TTL_HOURS,
+                                    RedisTemplate<String, Object> redisTemplate) {
+        this.DATA_PREFIX = DATA_PREFIX;
+        this.TEXT_PREFIX = TEXT_PREFIX;
+        this.CACHE_TTL_HOURS = CACHE_TTL_HOURS;
+        this.redisTemplate = redisTemplate;
+    }
+
     /**
      * Сохраняет результат анализа в Redis
      * @param text Исходный текст (используется для генерации ключа)
      * @param response Результат анализа
      */
-    public void save(String text, Object response) {
-        String key = generateKey(text);
+    public void save(String text, SentimentResponse response) {
+        String dataKey = DATA_PREFIX + response.id();
+        String textIndexKey = TEXT_PREFIX + generateKey(text);
+        redisTemplate.opsForValue().set(dataKey, response, CACHE_TTL_HOURS, TimeUnit.HOURS);
+        redisTemplate.opsForValue().set(textIndexKey, response.id(), CACHE_TTL_HOURS, TimeUnit.HOURS);
+        log.info("Saved: ID={}, Text={}", response.id(), truncate(text));
+    }
+
+    /**
+     * Получение по тексту (через индекс)
+     */
+    public Optional<SentimentResponse> getByText(String text) {
+        String textIndexKey = TEXT_PREFIX + generateKey(text);
+        String id = (String) redisTemplate.opsForValue().get(textIndexKey);
+        if (id == null) {
+            log.info("SentimentResponse not found");
+            return Optional.empty();
+        }
+        log.info("Found SentimentResponse by text, id is : ={}, Text={}", id, truncate(text));
+        return getById(id);
+    }
+
+    /**
+     * Прямое получение по ID (основной метод)
+     */
+    public Optional<SentimentResponse> getById(String id) {
+        String dataKey = DATA_PREFIX + id;
+        RedisSerializer<?> originalValueSerializer = redisTemplate.getValueSerializer();
         try {
-            // Сохраняем в Redis с TTL 24 часа
-            redisTemplate.opsForValue().set(key, response, CACHE_TTL_HOURS, TimeUnit.HOURS);
-            log.info("Saved to Redis cache. Key: {}, TTL: {} hours", key, CACHE_TTL_HOURS);
+            redisTemplate.setValueSerializer(new StringRedisSerializer());
+            String json = (String) redisTemplate.opsForValue().get(dataKey);
+            if (json == null)
+                return Optional.empty();
+            ObjectMapper objectMapper = new ObjectMapper();
+            SentimentResponse response = objectMapper.readValue(json, SentimentResponse.class);
+            return Optional.of(response);
         } catch (Exception e) {
-            log.error("Failed to save to Redis: {}", e.getMessage(), e);
+            log.error("Failed to deserialize: {}", e.getMessage());
+            return Optional.empty();
+        } finally {
+            redisTemplate.setValueSerializer(originalValueSerializer);
         }
     }
-    
+
     /**
-     * Получает результат из Redis
-     * @param text Исходный текст
-     * @return Результат или null, если не найден
+     * Получение всех ID (для администрирования)
      */
-    public Object get(String text) {
-        String key = generateKey(text);
-        try {
-            Object value = redisTemplate.opsForValue().get(key);
-            if (value != null) {
-                log.info("Retrieved from Redis cache. Key: {}", key);
-            } else {
-                log.debug("Cache miss for key: {}", key);
-            }
-            return value;
-        } catch (Exception e) {
-            log.error("Failed to get from Redis: {}", e.getMessage(), e);
-            return null;
-        }
+    public Set<String> getAllIds() {
+        // Используем SCAN вместо KEYS
+        Set<String> keys = redisTemplate.keys(DATA_PREFIX + "*");
+        if (keys == null || keys.isEmpty())
+            return Collections.emptySet();
+        return keys.stream().map(key -> key.substring(DATA_PREFIX.length())).collect(Collectors.toSet());
     }
-    
+
     /**
-     * Проверяет, есть ли результат в кэше
+     * Получение всех данных (осторожно, может быть много!)
      */
-    public boolean exists(String text) {
-        String key = generateKey(text);
-        return redisTemplate.hasKey(key);
-    }
-    
-    /**
-     * Удаляет запись из кэша (полезно для инвалидации)
-     */
-    public void delete(String text) {
-        String key = generateKey(text);
-        redisTemplate.delete(key);
-        log.info("Deleted from Redis cache. Key: {}", key);
+    public List<SentimentResponse> getAll() {
+        return getAllIds().stream().map(this::getById).filter(Optional::isPresent).map(Optional::get).toList();
     }
     
     /**
@@ -84,19 +122,18 @@ public class SentimentCacheRepository {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] hash = md.digest(text.getBytes());
-            
-            // Конвертируем байты в hex строку
             StringBuilder hexString = new StringBuilder();
             for (byte b : hash) {
                 hexString.append(String.format("%02x", b));
             }
-            
-            return CACHE_KEY_PREFIX + hexString.toString();
-            
+            return hexString.toString();
         } catch (NoSuchAlgorithmException e) {
-            // Fallback: используем hashCode если MD5 недоступен
             log.warn("MD5 not available, using hashCode as fallback");
-            return CACHE_KEY_PREFIX + text.hashCode();
+            return String.valueOf(text.hashCode());
         }
+    }
+
+    private String truncate(String text) {
+        return text.length() > 50 ? text.substring(0, 47) + "..." : text;
     }
 }

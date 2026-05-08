@@ -6,13 +6,18 @@ import com.pavlov.sentiment.service.SentimentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
+import java.util.Set;
 
 import static org.springframework.http.HttpStatus.CREATED;
 
@@ -23,33 +28,30 @@ public class SentimentController {
 
    private final SentimentService sentimentService;
 
+    @GetMapping
+    public List<SentimentResponse> getAll() {
+        return sentimentService.findAll();
+    }
+
+    @GetMapping("/ids")
+    public Set<String> getAllIds() {
+        return sentimentService.findAllIds();
+    }
+
+    @GetMapping("/by-text")
+    public SentimentResponse getSentimentByText(@RequestParam("text") String text) {
+        return sentimentService.findByText(text);
+    }
+
+    @GetMapping("/{id}")
+    public SentimentResponse getSentimentById(@PathVariable("id") String id) {
+        return sentimentService.findById(id);
+    }
+
    @PostMapping
    @ResponseStatus(CREATED)
    public ResponseEntity<SentimentResponse> processMessage(@Valid @RequestBody SentimentRequest messageRequest) throws NoSuchAlgorithmException {
-//       SentimentResponse sentimentResponse = sentimentService.processMessage(messageRequest);
-
-//       log.info("Received analysis request: {}", truncate(request.getText()));
-
        SentimentResponse response = sentimentService.analyzeText(messageRequest.text());
-
-       // Добавляем заголовок, чтобы клиент знал, был ли ответ из кэша
-//       if (response.isFromCache()) {
-//           return ResponseEntity.ok()
-//                   .header("X-Cache", "HIT")
-//                   .body(response);
-//       } else {
-           return ResponseEntity.ok()
-                   .header("X-Cache", "MISS")
-                   .body(response);
+       return ResponseEntity.ok().body(response);
    }
-
-//   @GetMapping("/{id}")
-//   public ResponseEntity<SentimentLog> getMessage(@PathVariable("id") String id) {
-//       return ResponseEntity.ok(sentimentService.getMessage(id));
-//   }
-//
-//    @GetMapping()
-//    public List<SentimentLog> getMessages() {
-//        return sentimentService.getMessages();
-//    }
 }

@@ -2,72 +2,52 @@ package com.pavlov.sentiment.service;
 
 import com.pavlov.sentiment.model.SentimentResponse;
 import com.pavlov.sentiment.repository.SentimentCacheRepository;
-//import com.pavlov.sentiment.repository.SentimentLogRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.List;
+import java.util.Set;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SentimentService {
 
-//    private final SentimentLogRepository sentimentLogRepository;
-
     private final SentimentCacheRepository sentimentCacheRepository;
 
-//    public List<SentimentLog> getMessages() {
-//        return (List<SentimentLog>) sentimentLogRepository.findAll();
-//    }
+    public List<SentimentResponse> findAll() {
+        return sentimentCacheRepository.getAll();
+    }
 
-//    public SentimentLog getMessage(String id) {
-//        return sentimentLogRepository.findById(id).orElseThrow(() -> new IllegalArgumentException(String.format("Message with key %s not found", id)));
-//    }
+    public Set<String> findAllIds() {
+        return sentimentCacheRepository.getAllIds();
+    }
 
-//    public SentimentResponse processMessage(MessageRequest messageRequest) throws NoSuchAlgorithmException {
-//        MessageDigest md5 = MessageDigest.getInstance("MD5");
-//        md5.update(messageRequest.text().substring(0, 200).getBytes(StandardCharsets.UTF_8));
-//        byte[] digest = md5.digest();
-//        StringBuilder hash = new StringBuilder();
-//        for (byte b : digest) {
-//            hash.append(String.format("%02x", b));
-//        }
-//        String id = sentimentLogRepository.save(new SentimentLog(hash.toString(), messageRequest.text())).key();
-// //        String id = sentimentLogRepository.save(new SentimentLog(hash.toString(), messageRequest.data())).getKey();
-//
-//        return new SentimentResponse(id, "neutral", 10.0, 500);
-//    }
+    public SentimentResponse findByText(String text) {
+        return sentimentCacheRepository.getByText(text).orElseThrow(
+                () -> new IllegalArgumentException(String.format("Message with text %s ... not found", text.length() > 15 ? text.substring(0, 15) : text)));
+    }
 
-    //------
+    public SentimentResponse findById(String id) {
+        return sentimentCacheRepository.getById(id).orElseThrow(
+                () -> new IllegalArgumentException(String.format("Message with id %s not found", id)));
+    }
 
     /**
      * Анализирует тональность текста
      * Сначала проверяет кэш, если нет - вызывает "дорогой" анализ
      */
-    public SentimentResponse analyzeText(String text) {
+    public SentimentResponse analyzeText(String text) throws NoSuchAlgorithmException {
         long startTime = System.currentTimeMillis();
-
-        // ШАГ 1: Проверяем Redis кэш
-        SentimentResponse cachedResponse = (SentimentResponse) sentimentCacheRepository.get(text);
-
-        if (cachedResponse != null) {
-            // Нашли в кэше! Возвращаем мгновенно
-//            log.info(" Cache HIT for text: {}", truncate(text));
-//            cachedResponse.setFromCache(true);
-            return cachedResponse;
-        }
-
-        // ШАГ 2: В кэше нет - делаем "дорогой" анализ
-//        log.info("Cache MISS for text: {}, performing analysis...", truncate(text));
-
-        // ЗДЕСЬ ПОКА ЗАГЛУШКА
-        // Позже заменим на реальный вызов ML модели
+        // Позже на реальный вызов ML модели
         SentimentResponse response = mockAnalysis(text);
-
-        // ШАГ 3: Сохраняем результат в кэш
         sentimentCacheRepository.save(text, response);
-
         long totalTime = System.currentTimeMillis() - startTime;
-//        log.info("Analysis completed in {} ms", totalTime);
-
+        log.info("Analysis completed in {} ms", totalTime);
         return response;
     }
 
@@ -75,7 +55,7 @@ public class SentimentService {
      * ЗАГЛУШКА: Имитирует медленный анализ
      * Позже заменим на реальную ML модель
      */
-    private SentimentResponse mockAnalysis(String text) {
+    private SentimentResponse mockAnalysis(String text) throws NoSuchAlgorithmException {
         try {
             // Имитируем тяжелую работу (1 секунда)
             Thread.sleep(1000);
@@ -98,11 +78,22 @@ public class SentimentService {
             sentiment = "NEUTRAL";
             confidence = 0.60;
         }
-
-        return new SentimentResponse(sentiment, confidence, 1000);
+        String key = generateKey(text);
+        return new SentimentResponse(key, text, sentiment, confidence, 1000);
     }
 
-    private String truncate(String text) {
-        return text.length() > 50 ? text.substring(0, 47) + "..." : text;
+    private String generateKey(String text) throws NoSuchAlgorithmException {
+        MessageDigest md5 = MessageDigest.getInstance("MD5");
+        if (text.length() < 200) {
+            md5.update(text.getBytes(StandardCharsets.UTF_8));
+        } else {
+            md5.update(text.substring(0, 200).getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] digest = md5.digest();
+        StringBuilder hash = new StringBuilder();
+        for (byte b : digest) {
+            hash.append(String.format("%02x", b));
+        }
+        return hash.toString();
     }
 }

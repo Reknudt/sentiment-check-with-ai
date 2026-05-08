@@ -1,3 +1,6 @@
+server:
+  port: 8080
+
 spring:
   application:
     name: sentiment-check-with-ai
@@ -12,9 +15,10 @@ spring:
           max-active: 10   # Максимум соединений в пуле
           max-idle: 5      # Максимум idle соединений
           min-idle: 2      # Минимум idle соединений
-
-server:
-  port: 8080
+      cache:
+        timeToLive: 24
+      dataPrefix: "sentiment:data:"
+      textPrefix: "sentiment:text:"
 
 logging:
   level:
