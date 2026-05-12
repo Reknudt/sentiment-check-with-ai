@@ -4,7 +4,8 @@ server:
 spring:
   application:
     name: sentiment-check-with-ai
-
+  config:
+    import: file:.env.properties
   data:
     redis:
       host: localhost  # Хост Redis
@@ -19,6 +20,14 @@ spring:
         timeToLive: 24
       dataPrefix: "sentiment:data:"
       textPrefix: "sentiment:text:"
+
+sentiment:
+  ai:
+    default-strategy: huggingface  # default strategy
+    huggingface:
+      api-key: ${HUGGINGFACE_API_KEY}
+      model: distilbert-base-uncased-finetuned-sst-2-english
+      api-url: https://api-inference.huggingface.co/models/
 
 logging:
   level:

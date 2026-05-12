@@ -1,0 +1,41 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sentiment-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - sentiment-network
+
+  sentiment-app:
+    build: .
+    container_name: sentiment-app
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+#      SPRING_RABBITMQ_HOST: rabbitmq
+#      SPRING_RABBITMQ_PORT: 5672
+#      SPRING_RABBITMQ_USERNAME: guest
+#      SPRING_RABBITMQ_PASSWORD: guest
+    env_file:
+      - .env.properties
+    depends_on:
+      - redis
+#      - rabbitmq
+    networks:
+      - sentiment-network
+    restart: unless-stopped
+
+networks:
+  sentiment-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+#  rabbitmq-data:

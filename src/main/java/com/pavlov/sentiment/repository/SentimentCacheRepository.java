@@ -20,7 +20,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Repository
-//@RequiredArgsConstructor
 public class SentimentCacheRepository {
 
     @Value("${spring.data.redis.dataPrefix}")
@@ -110,9 +109,13 @@ public class SentimentCacheRepository {
     public List<SentimentResponse> getAll() {
         return getAllIds().stream().map(this::getById).filter(Optional::isPresent).map(Optional::get).toList();
     }
-    
+
+    public String truncate(String text) {
+        return text.length() > 50 ? text.substring(0, 50) + "..." : text;
+    }
+
     /**
-     * Генерирует уникальный ключ для текста
+     * Генерирует уникальный ключ для текста.
      * Используем MD5, чтобы:
      * 1. Ключ был фиксированной длины
      * 2. Избежать проблем с длинными текстами
@@ -131,9 +134,5 @@ public class SentimentCacheRepository {
             log.warn("MD5 not available, using hashCode as fallback");
             return String.valueOf(text.hashCode());
         }
-    }
-
-    private String truncate(String text) {
-        return text.length() > 50 ? text.substring(0, 47) + "..." : text;
     }
 }
